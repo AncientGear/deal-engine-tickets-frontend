@@ -33,9 +33,10 @@ jobs:
         run: npm run build
 
       - name: Upload frontend artifact
+        if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: frontend-dist-${{ github.sha }}
           path: dist/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
