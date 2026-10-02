@@ -1,0 +1,66 @@
+name: Publish frontend release to S3
+
+on:
+  workflow_call:
+    inputs:
+      role-arn:
+        required: true
+        type: string
+      aws-region:
+        required: true
+        type: string
+      bucket:
+        required: true
+        type: string
+      artifact-name:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+
+    steps:
+      - name: Download built frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}/frontend-dist
+
+      - name: Verify artifact structure
+        run: |
+          test -s "${RUNNER_TEMP}/frontend-dist/index.html"
+          test -d "${RUNNER_TEMP}/frontend-dist/assets"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+          allowed-account-ids: "989200477899"
+          role-session-name: frontend-publish-${{ github.run_id }}
+
+      - name: Publish release
+        env:
+          BUCKET: ${{ inputs.bucket }}
+          RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          destination="s3://${BUCKET}/releases/${RELEASE_ID}/"
+
+          aws s3 cp \
+            "${RUNNER_TEMP}/frontend-dist/" \
+            "$destination" \
+            --recursive \
+            --only-show-errors
+
+          printf 'Published release: `%s`\n' "$destination" \
+            >> "$GITHUB_STEP_SUMMARY"
