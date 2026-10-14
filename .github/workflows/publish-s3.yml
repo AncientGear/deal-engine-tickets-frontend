@@ -15,6 +15,9 @@ on:
       artifact-name:
         required: true
         type: string
+      distribution-id:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -23,6 +26,9 @@ jobs:
   publish:
     if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
     runs-on: ubuntu-24.04
+    concurrency:
+      group: frontend-current-dev
+      cancel-in-progress: false
 
     permissions:
       contents: read
@@ -30,6 +36,8 @@ jobs:
       id-token: write
 
     steps:
+      - name: Checkout promotion script
+        uses: actions/checkout@v5
       - name: Download built frontend
         uses: actions/download-artifact@v4
         with:
@@ -64,3 +72,13 @@ jobs:
 
           printf 'Published release: `%s`\n' "$destination" \
             >> "$GITHUB_STEP_SUMMARY"
+      - name: Promote published release
+        env:
+          BUCKET: ${{ inputs.bucket }}
+          RELEASE_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          DISTRIBUTION_ID: ${{ inputs.distribution-id }}
+        run: |
+          bash scripts/promote-release.sh
+
+          printf 'Copied release to current: `%s` (CloudFront activation depends on origin configuration)\n' \
+               "$RELEASE_ID" >> "$GITHUB_STEP_SUMMARY"

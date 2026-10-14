@@ -15,3 +15,54 @@ Open http://localhost:5173 and create the first administrator with a password of
 ## Without Compose
 
 Requires Node.js 18+. Run `npm install`, then `npm run dev`; Vite proxies `/api` to `http://127.0.0.1:8080` by default. Start the backend separately. Set `VITE_API_PROXY_TARGET` to override the development proxy target. Run `npm run build` to produce `dist/`. Serve `dist/` as static assets and proxy `/api` to the backend on the same origin; use HTTPS in production. The login token stays in memory only, so refreshing the page logs out.
+
+## Frontend delivery to dev
+
+Pull requests to `dev` run promotion-script tests, dependency installation,
+dependency auditing and the frontend build. They do not publish to S3.
+
+A push to `dev` publishes the build to an immutable release prefix:
+
+    releases/<github.run_id>-<github.run_attempt>/
+
+The publication job then:
+
+1. Downloads the published release.
+2. Validates non-empty HTML, assets and direct local HTML references.
+3. Copies dependencies to `current/`, retaining previous objects.
+4. Publishes `current/index.html` last.
+5. Requests CloudFront invalidation for `/` and `/index.html`.
+
+Promotion jobs use the `frontend-current-dev` concurrency group without
+cancelling a running job. This prevents overlapping promotions but does
+not guarantee chronological execution of all queued releases.
+
+CloudFront must use `/current` as its S3 origin path for these promotions
+to become active. During migration, copying to `current/` does not activate
+a release while CloudFront still points to `releases/<id>/`.
+
+## Promotion safety and limitations
+
+`scripts/promote-release.sh` requires `BUCKET`, `RELEASE_ID` and
+`DISTRIBUTION_ID`. Running it with a real AWS CLI writes to S3 and requests
+an invalidation. It is not a dry-run command.
+
+Copying multiple S3 objects is not atomic. A failed dependency upload
+stops before publishing HTML; a failed HTML upload stops before invalidation.
+Already copied objects are not automatically reverted.
+
+Asset URLs must be content-hashed and immutable. Validation checks direct
+HTML references, not transitive JavaScript or CSS dependencies.
+Successful invalidation submission does not mean invalidation is complete.
+
+Keep prior releases and assets for rollback and clients using older HTML.
+An automated rollback workflow is not implemented yet.
+
+## Local promotion checks
+
+Run from this repository:
+
+    bash -n scripts/promote-release.sh
+    python3 scripts/tests/test_promote_release.py -v
+
+The Python tests use a simulated AWS CLI and do not access AWS.
