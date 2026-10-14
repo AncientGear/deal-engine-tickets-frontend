@@ -56,7 +56,21 @@ HTML references, not transitive JavaScript or CSS dependencies.
 Successful invalidation submission does not mean invalidation is complete.
 
 Keep prior releases and assets for rollback and clients using older HTML.
-An automated rollback workflow is not implemented yet.
+## Manual rollback in dev
+
+The `frontend-rollback.yml` workflow restores an existing release without
+rebuilding the frontend or changing Terraform.
+
+In GitHub Actions, select "Frontend rollback dev", choose the `dev` branch
+and enter the release ID in `run_id-run_attempt` format.
+
+The workflow validates the release, copies dependencies to `current/`,
+publishes index.html last and requests selective CloudFront invalidation.
+It shares the deployment concurrency group with normal promotions.
+
+Rollback changes deployed S3 content, not Git history. A later deployment
+can promote newer code again. Verify the workflow result and the deployed
+UI after rollback. Staging and production rollback are not enabled yet.
 
 ## Local promotion checks
 
