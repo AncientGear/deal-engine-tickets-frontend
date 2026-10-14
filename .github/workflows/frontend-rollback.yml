@@ -1,0 +1,62 @@
+name: Frontend rollback dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-id:
+        description: "Existing release to restore (run_id-run_attempt)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+
+    concurrency:
+      group: frontend-current-dev
+      cancel-in-progress: false
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout promotion script
+        uses: actions/checkout@v5
+
+      - name: Validate release identifier
+        env:
+          RELEASE_ID: ${{ inputs.release-id }}
+        run: |
+          if [[ ! "$RELEASE_ID" =~ ^[0-9]+-[0-9]+$ ]]; then
+            printf '%s\n' 'Invalid release ID; expected run_id-run_attempt.' >&2
+            exit 1
+          fi
+
+      - name: Test promotion script
+        run: |
+          bash -n scripts/promote-release.sh
+          python3 scripts/tests/test_promote_release.py -v
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::989200477899:role/dealengine-dev-github-s3-publisher
+          aws-region: us-east-2
+          allowed-account-ids: "989200477899"
+          role-session-name: frontend-rollback-${{ github.run_id }}
+
+      - name: Restore published release
+        env:
+          BUCKET: deal-engine-ticket-manager-dev-1583tta4
+          RELEASE_ID: ${{ inputs.release-id }}
+          DISTRIBUTION_ID: E9HSDX6N409DP
+        run: |
+          bash scripts/promote-release.sh
+
+          printf 'Restored dev release: `%s`\n' "$RELEASE_ID" \
+            >> "$GITHUB_STEP_SUMMARY"
