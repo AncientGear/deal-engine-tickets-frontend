@@ -22,7 +22,10 @@ jobs:
         with:
           node-version: "22.23.2"
           cache: npm
-
+      - name: Test release promotion
+        run: |
+          bash -n scripts/promote-release.sh
+          python3 scripts/tests/test_promote_release.py -v
       - name: Install dependencies
         run: npm ci
 
@@ -52,6 +55,7 @@ jobs:
     uses: ./.github/workflows/publish-s3.yml
 
     with:
+      distribution-id: E9HSDX6N409DP
       role-arn: arn:aws:iam::989200477899:role/dealengine-dev-github-s3-publisher
       aws-region: us-east-2
       bucket: deal-engine-ticket-manager-dev-1583tta4
